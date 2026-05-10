@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: media-health-checker
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: media-health-checker
+
+  template:
+    metadata:
+      labels:
+        app: media-health-checker
+
+    spec:
+      containers:
+        - name: media-health-checker
+          image: media-health-checker-backend:latest
+
+          ports:
+            - containerPort: 5001
+
+          imagePullPolicy: Never

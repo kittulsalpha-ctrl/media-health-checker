@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: media-health-checker-service
+
+spec:
+  selector:
+    app: media-health-checker
+
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5001
+
+  type: NodePort
