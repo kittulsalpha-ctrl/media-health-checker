@@ -14,6 +14,10 @@ REPORTS_FOLDER = "reports"
 FRAMES_FOLDER = "frames"
 WATCH_FOLDER = "watch-folder"
 
+os.makedirs(REPORTS_FOLDER, exist_ok=True)
+os.makedirs(FRAMES_FOLDER, exist_ok=True)
+os.makedirs(WATCH_FOLDER, exist_ok=True)
+
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mxf", ".avi", ".mkv"}
 
 HTML_PAGE = """
