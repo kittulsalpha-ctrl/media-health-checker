@@ -1,35 +1,108 @@
 import os
 import json
-import subprocess
-from flask import Flask, jsonify, request, render_template_string
+from flask import (
+    Flask,
+    render_template_string,
+    send_from_directory,
+    request,
+    redirect
+)
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+REPORTS_FOLDER = "reports"
+FRAMES_FOLDER = "frames"
+WATCH_FOLDER = "watch-folder"
+
+ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mxf", ".avi", ".mkv"}
 
 HTML_PAGE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Media Health Checker</title>
+
+    <title>Media Operations Dashboard</title>
+    <meta http-equiv="refresh" content="40">
+
     <style>
         body {
             font-family: Arial;
-            margin: 40px;
             background: #f4f4f4;
-        }
-
-        .container {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 700px;
-            margin: auto;
+            margin: 30px;
         }
 
         h1 {
-            color: #333;
+            color: #222;
+        }
+
+        .upload-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 180px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .table-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #222;
+            color: white;
+            padding: 12px;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .pass {
+            color: green;
+            font-weight: bold;
+        }
+
+        .warning {
+            color: orange;
+            font-weight: bold;
+        }
+
+        .fail {
+            color: red;
+            font-weight: bold;
+        }
+
+        img {
+            width: 160px;
+            border-radius: 8px;
+        }
+
+        input, select {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-right: 10px;
         }
 
         button {
@@ -37,168 +110,216 @@ HTML_PAGE = """
             background: black;
             color: white;
             border: none;
+            border-radius: 5px;
             cursor: pointer;
         }
-
-        pre {
-            background: #eee;
-            padding: 15px;
-            overflow-x: auto;
-        }
     </style>
+
 </head>
+
 <body>
 
-<div class="container">
-    <h1>Media Health Checker</h1>
+    <h1>Media Operations Dashboard</h1>
 
-    <form action="/check" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" required>
-        <br><br>
-        <button type="submit">Analyze File</button>
-    </form>
+    <div class="upload-box">
+        <form
+            action="/upload"
+            method="post"
+            enctype="multipart/form-data"
+        >
+            <input
+                type="file"
+                name="file"
+                accept=".mp4,.mov,.mxf,.avi,.mkv"
+                required
+            >
 
-    {% if report %}
-    <h2>Analysis Result</h2>
+            <button type="submit">Upload Media</button>
+        </form>
+    </div>
 
-    <pre>{{ report }}</pre>
-    {% endif %}
-</div>
+    <div class="stats">
+
+        <div class="card">
+            <h3>Total Files</h3>
+            <h2>{{ total_files }}</h2>
+        </div>
+
+        <div class="card">
+            <h3>PASS</h3>
+            <h2 class="pass">{{ pass_count }}</h2>
+        </div>
+
+        <div class="card">
+            <h3>WARNING</h3>
+            <h2 class="warning">{{ warning_count }}</h2>
+        </div>
+
+        <div class="card">
+            <h3>FAIL</h3>
+            <h2 class="fail">{{ fail_count }}</h2>
+        </div>
+
+    </div>
+
+    <div style="margin-bottom: 20px;">
+
+        <input
+            type="text"
+            id="searchInput"
+            placeholder="Search filename..."
+        >
+
+        <select id="statusFilter">
+            <option value="ALL">All Status</option>
+            <option value="PASS">PASS</option>
+            <option value="WARNING">WARNING</option>
+            <option value="FAIL">FAIL</option>
+        </select>
+
+    </div>
+
+    <div class="table-container">
+
+        <table>
+
+            <tr>
+                <th>Frame</th>
+                <th>Filename</th>
+                <th>Status</th>
+                <th>Codec</th>
+                <th>Resolution</th>
+                <th>AI Tags</th>
+                <th>Validation Notes</th>
+            </tr>
+
+            {% for item in reports %}
+
+            <tr class="report-row" data-status="{{ item.status }}">
+
+                <td>
+                    <img src="/frames/{{ item.filename }}.jpg">
+                </td>
+
+                <td>{{ item.filename }}</td>
+
+                <td>
+                    {% if item.status == "PASS" %}
+                        <span class="pass">PASS</span>
+                    {% elif item.status == "WARNING" %}
+                        <span class="warning">WARNING</span>
+                    {% else %}
+                        <span class="fail">FAIL</span>
+                    {% endif %}
+                </td>
+
+                <td>{{ item.video_codec }}</td>
+
+                <td>{{ item.resolution }}</td>
+
+                <td>{{ item.ai_tags | join(", ") }}</td>
+
+                <td>{{ item.validation_messages | join(", ") }}</td>
+
+            </tr>
+
+            {% endfor %}
+
+        </table>
+
+    </div>
+
+<script>
+const searchInput = document.getElementById("searchInput");
+const statusFilter = document.getElementById("statusFilter");
+const rows = document.querySelectorAll(".report-row");
+
+function filterRows() {
+    const searchValue = searchInput.value.toLowerCase();
+    const selectedStatus = statusFilter.value;
+
+    rows.forEach(row => {
+        const filename = row.children[1].innerText.toLowerCase();
+        const status = row.dataset.status;
+
+        const matchesSearch = filename.includes(searchValue);
+        const matchesStatus =
+            selectedStatus === "ALL" || status === selectedStatus;
+
+        row.style.display =
+            matchesSearch && matchesStatus ? "" : "none";
+    });
+}
+
+searchInput.addEventListener("input", filterRows);
+statusFilter.addEventListener("change", filterRows);
+</script>
 
 </body>
 </html>
 """
 
-@app.route("/")
-def home():
-    return render_template_string(HTML_PAGE)
+@app.route("/frames/<path:filename>")
+def serve_frame(filename):
+    return send_from_directory(FRAMES_FOLDER, filename)
 
-@app.route("/check", methods=["POST"])
-def check_media():
-
+@app.route("/upload", methods=["POST"])
+def upload_file():
     if "file" not in request.files:
-        return "No file uploaded"
+        return redirect("/")
 
     file = request.files["file"]
 
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    if file.filename == "":
+        return redirect("/")
 
-    file.save(file_path)
+    ext = os.path.splitext(file.filename)[1].lower()
 
-    command = [
-        "ffprobe",
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        file_path
-    ]
+    if ext not in ALLOWED_EXTENSIONS:
+        print("Rejected unsupported file type:", file.filename)
+        return redirect("/")
 
-    result = subprocess.run(command, capture_output=True, text=True)
+    save_path = os.path.join(WATCH_FOLDER, file.filename)
+    file.save(save_path)
 
-    metadata = json.loads(result.stdout)
+    print(f"Uploaded file: {file.filename}")
 
-    video_stream = None
-    audio_stream = None
+    return redirect("/")
 
-    for stream in metadata.get("streams", []):
+@app.route("/")
+def dashboard():
+    reports = []
 
-        if stream.get("codec_type") == "video":
-            video_stream = stream
+    pass_count = 0
+    warning_count = 0
+    fail_count = 0
 
-        if stream.get("codec_type") == "audio":
-            audio_stream = stream
+    if os.path.exists(REPORTS_FOLDER):
+        for file in os.listdir(REPORTS_FOLDER):
+            if file.endswith(".json"):
+                report_path = os.path.join(REPORTS_FOLDER, file)
 
-    report = {
-        "filename": file.filename,
-        "duration_seconds": metadata.get("format", {}).get("duration"),
-        "video_codec": video_stream.get("codec_name") if video_stream else None,
-        "resolution": f"{video_stream.get('width')}x{video_stream.get('height')}" if video_stream else None,
-        "frame_rate": video_stream.get("avg_frame_rate") if video_stream else None,
-        "audio_codec": audio_stream.get("codec_name") if audio_stream else None,
-        "audio_channels": audio_stream.get("channels") if audio_stream else None,
-        "status": "PASS"
-    }
+                with open(report_path) as report_file:
+                    data = json.load(report_file)
+                    reports.append(data)
+
+                    if data["status"] == "PASS":
+                        pass_count += 1
+                    elif data["status"] == "WARNING":
+                        warning_count += 1
+                    else:
+                        fail_count += 1
+
+    total_files = len(reports)
 
     return render_template_string(
         HTML_PAGE,
-        report=json.dumps(report, indent=4)
+        reports=reports,
+        total_files=total_files,
+        pass_count=pass_count,
+        warning_count=warning_count,
+        fail_count=fail_count
     )
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001)
-import json
-import subprocess
-from flask import Flask, jsonify, request
-
-app = Flask(__name__)
-
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-@app.route("/")
-def home():
-    return jsonify({
-        "app": "Media Health Checker",
-        "status": "running"
-    })
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-
-@app.route("/check", methods=["POST"])
-def check_media():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(file_path)
-
-    command = [
-        "ffprobe",
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        file_path
-    ]
-
-    result = subprocess.run(command, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        return jsonify({
-            "status": "FAIL",
-            "error": "ffprobe failed to read the file"
-        }), 500
-
-    metadata = json.loads(result.stdout)
-
-    video_stream = None
-    audio_stream = None
-
-    for stream in metadata.get("streams", []):
-        if stream.get("codec_type") == "video" and video_stream is None:
-            video_stream = stream
-        if stream.get("codec_type") == "audio" and audio_stream is None:
-            audio_stream = stream
-
-    report = {
-        "filename": file.filename,
-        "duration_seconds": metadata.get("format", {}).get("duration"),
-        "file_size_bytes": metadata.get("format", {}).get("size"),
-        "overall_bitrate": metadata.get("format", {}).get("bit_rate"),
-        "video_codec": video_stream.get("codec_name") if video_stream else None,
-        "resolution": f"{video_stream.get('width')}x{video_stream.get('height')}" if video_stream else None,
-        "frame_rate": video_stream.get("avg_frame_rate") if video_stream else None,
-        "audio_codec": audio_stream.get("codec_name") if audio_stream else None,
-        "audio_channels": audio_stream.get("channels") if audio_stream else None,
-        "audio_sample_rate": audio_stream.get("sample_rate") if audio_stream else None,
-        "status": "PASS" if video_stream and audio_stream else "WARNING"
-    }
-
-    return jsonify(report)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
