@@ -39,7 +39,7 @@ HTML_PAGE = """
 <html>
 <head>
     <title>Media Operations Dashboard</title>
-    <meta http-equiv="refresh" content="5">
+    <meta http-equiv="refresh" content="30">
 
     <style>
         body { font-family: Arial; background: #f4f4f4; margin: 30px; }
